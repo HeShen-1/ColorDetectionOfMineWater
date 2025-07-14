@@ -1,0 +1,33 @@
+# Build outputs
+bin/
+obj/
+publish/
+deployment/
+
+# Package files
+*.tar.gz
+*.zip
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio
+.vs/
+.vscode/
+
+# Rider
+.idea/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+
+# Logs
+*.log 
+*.todo

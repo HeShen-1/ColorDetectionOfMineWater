@@ -1,0 +1,15 @@
+<!-- 
+    应用程序XAML定义文件
+    定义应用程序级别的资源、样式和主题配置
+-->
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CameraColorPicker.App"
+             RequestedThemeVariant="Default">
+
+    <!-- 应用程序样式配置 -->
+    <Application.Styles>
+        <!-- 使用Fluent设计风格主题 -->
+        <FluentTheme />
+    </Application.Styles>
+</Application> 
