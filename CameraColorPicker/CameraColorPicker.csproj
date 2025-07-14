@@ -1,0 +1,45 @@
+<!-- 
+    摄像头颜色提取器项目配置文件
+    配置目标框架、运行时、发布选项和依赖包
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 项目属性配置 -->
+  <PropertyGroup>
+    <!-- 输出类型：可执行文件 -->
+    <OutputType>Exe</OutputType>
+    <!-- 目标框架：.NET 8.0 -->
+    <TargetFramework>net8.0</TargetFramework>
+    <!-- 运行时标识符：Linux ARM64架构（树莓派5） -->
+    <RuntimeIdentifier>linux-arm64</RuntimeIdentifier>
+    <!-- 不发布为单个文件（便于调试和模块化） -->
+    <PublishSingleFile>false</PublishSingleFile>
+    <!-- 自包含部署（包含.NET运行时） -->
+    <SelfContained>true</SelfContained>
+    <!-- 不进行程序集裁剪（避免运行时错误） -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <!-- 包含本机库以便自解压 -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- 启用单文件压缩 -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- 允许不安全代码块（用于直接内存操作） -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- 复制锁定文件程序集到输出目录 -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!-- NuGet包引用 -->
+  <ItemGroup>
+    <!-- Avalonia UI框架核心包 -->
+    <PackageReference Include="Avalonia" Version="11.0.10" />
+    <!-- Avalonia桌面平台支持 -->
+    <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />
+    <!-- Avalonia Fluent主题 -->
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.10" />
+    <!-- SkiaSharp 2D图形库 -->
+    <PackageReference Include="SkiaSharp" Version="2.88.7" />
+    <!-- SkiaSharp Linux本机资源 -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.7" />
+  </ItemGroup>
+
+</Project> 

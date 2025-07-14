@@ -1,0 +1,96 @@
+<!-- 
+    主窗口XAML定义文件
+    定义了摄像头颜色提取器的用户界面布局，包括摄像头显示区域、覆盖层和状态栏
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+        x:Class="CameraColorPicker.MainWindow"
+        Title="Camera Color Picker"
+        WindowStartupLocation="CenterScreen"
+        Width="800" Height="600">
+    
+    <!-- 主网格布局 - 分为上下两行 -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- 第一行：摄像头显示区域（占用剩余空间） -->
+            <RowDefinition Height="*"/>
+            <!-- 第二行：状态栏（自动高度） -->
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- 摄像头显示区域 -->
+        <Border Grid.Row="0" 
+                Background="Black"
+                Margin="10">
+            <Grid>
+                <!-- 摄像头图像显示控件 -->
+                <Image Name="CameraImage" 
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+                
+                <!-- 覆盖层画布 - 用于显示检测框、指示线和RGB值 -->
+                <Canvas Name="OverlayCanvas"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch">
+                    
+                    <!-- 选择矩形框 - 黄色边框，100x100像素 -->
+                    <Rectangle Name="SelectionRect"
+                             Width="100"
+                             Height="100"
+                             Stroke="Yellow"
+                             StrokeThickness="2"
+                             Fill="Transparent"/>
+                    
+                    <!-- 指示线 - 从矩形框延伸到RGB显示框 -->
+                    <Line Name="IndicatorLine"
+                          Stroke="Yellow"
+                          StrokeThickness="2"/>
+                    
+                    <!-- RGB数值显示框 - 半透明黑色背景 -->
+                    <Border Name="RgbDisplay"
+                            Background="#AA000000"
+                            CornerRadius="5"
+                            Padding="10">
+                        <!-- RGB数值文本 - 白色粗体字 -->
+                        <TextBlock Name="RgbText"
+                                 Foreground="White"
+                                 FontSize="14"
+                                 FontWeight="Bold"/>
+                    </Border>
+                </Canvas>
+            </Grid>
+        </Border>
+        
+        <!-- 状态栏 - 显示连接状态和FPS -->
+        <Border Grid.Row="1" 
+                Background="#F0F0F0"
+                Padding="10,5">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <!-- 第一列：状态文本（自动宽度） -->
+                    <ColumnDefinition Width="Auto"/>
+                    <!-- 第二列：空白填充（占用剩余空间） -->
+                    <ColumnDefinition Width="*"/>
+                    <!-- 第三列：FPS显示（自动宽度） -->
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <!-- 状态文本显示 -->
+                <TextBlock Grid.Column="0" 
+                         Name="StatusText"
+                         VerticalAlignment="Center"
+                         Text="Status: Initializing..."/>
+                
+                <!-- FPS显示文本 -->
+                <TextBlock Grid.Column="2"
+                         Name="FpsText"
+                         VerticalAlignment="Center"
+                         Text="FPS: 0"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window> 
