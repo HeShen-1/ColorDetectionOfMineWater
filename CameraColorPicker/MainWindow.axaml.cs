@@ -70,11 +70,26 @@ namespace CameraColorPicker
         /// </summary>
         private byte _currentGrayscale = 0;
 
+        /// <summary>
+        /// 检测框的中心位置（相对于图像坐标）
+        /// </summary>
+        private (double X, double Y) _selectionCenter = (320, 240); // 默认中心位置
+
+        /// <summary>
+        /// 检测框大小（像素）
+        /// </summary>
+        private const int SelectionSize = 100;
+
+        /// <summary>
+        /// 是否允许拖拽检测框
+        /// </summary>
+        private bool _isDragging = false;
+
         #endregion
 
         /// <summary>
         /// 主窗口构造函数
-        /// 初始化UI组件、定时器和串口管理器
+        /// 初始化UI组件、定时器、串口管理器和输入事件
         /// </summary>
         public MainWindow()
         {
@@ -96,6 +111,9 @@ namespace CameraColorPicker
             // 绑定窗口事件
             Opened += OnWindowOpened;
             Closing += OnWindowClosing;
+
+            // 绑定输入事件（鼠标和触摸）
+            InitializeInputEvents();
         }
 
         #region 窗口事件处理
@@ -214,6 +232,329 @@ namespace CameraColorPicker
 
         #endregion
 
+        #region 输入控制相关方法
+
+        /// <summary>
+        /// 初始化输入事件（鼠标和触摸）
+        /// </summary>
+        private void InitializeInputEvents()
+        {
+            // 当界面加载完成后绑定事件
+            this.Loaded += (sender, e) =>
+            {
+                if (CameraImage != null)
+                {
+                    // 绑定鼠标事件
+                    CameraImage.PointerPressed += OnImagePointerPressed;
+                    CameraImage.PointerMoved += OnImagePointerMoved;
+                    CameraImage.PointerReleased += OnImagePointerReleased;
+
+                    // 启用鼠标事件
+                    CameraImage.IsHitTestVisible = true;
+                }
+
+                // 绑定键盘事件
+                this.KeyDown += OnKeyDown;
+            };
+        }
+
+        /// <summary>
+        /// 鼠标/触摸按下事件处理
+        /// </summary>
+        /// <param name="sender">事件发送者</param>
+        /// <param name="e">事件参数</param>
+        private void OnImagePointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+        {
+            try
+            {
+                var position = e.GetPosition(CameraImage);
+                var imageCoord = ConvertUIToImageCoordinates(position);
+
+                if (imageCoord.HasValue)
+                {
+                    // 检查是否点击在检测框附近（允许拖拽）
+                    var distance = Math.Sqrt(
+                        Math.Pow(imageCoord.Value.X - _selectionCenter.X, 2) +
+                        Math.Pow(imageCoord.Value.Y - _selectionCenter.Y, 2));
+
+                    if (distance <= SelectionSize / 2 + 20) // 在检测框内或边缘附近
+                    {
+                        _isDragging = true;
+                        CameraImage.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand);
+                    }
+                    else
+                    {
+                        // 直接移动检测框到点击位置
+                        UpdateSelectionCenter(imageCoord.Value);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"PointerPressed error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 鼠标/触摸移动事件处理
+        /// </summary>
+        /// <param name="sender">事件发送者</param>
+        /// <param name="e">事件参数</param>
+        private void OnImagePointerMoved(object? sender, Avalonia.Input.PointerEventArgs e)
+        {
+            try
+            {
+                if (_isDragging)
+                {
+                    var position = e.GetPosition(CameraImage);
+                    var imageCoord = ConvertUIToImageCoordinates(position);
+
+                    if (imageCoord.HasValue)
+                    {
+                        UpdateSelectionCenter(imageCoord.Value);
+                    }
+                }
+                else
+                {
+                    // 检查鼠标是否在检测框附近，更新光标样式
+                    var position = e.GetPosition(CameraImage);
+                    var imageCoord = ConvertUIToImageCoordinates(position);
+
+                    if (imageCoord.HasValue)
+                    {
+                        var distance = Math.Sqrt(
+                            Math.Pow(imageCoord.Value.X - _selectionCenter.X, 2) +
+                            Math.Pow(imageCoord.Value.Y - _selectionCenter.Y, 2));
+
+                        if (distance <= SelectionSize / 2 + 20)
+                        {
+                            CameraImage.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand);
+                        }
+                        else
+                        {
+                            CameraImage.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Cross);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"PointerMoved error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 鼠标/触摸释放事件处理
+        /// </summary>
+        /// <param name="sender">事件发送者</param>
+        /// <param name="e">事件参数</param>
+        private void OnImagePointerReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs e)
+        {
+            try
+            {
+                _isDragging = false;
+                CameraImage.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Cross);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"PointerReleased error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 将UI坐标转换为图像坐标
+        /// </summary>
+        /// <param name="uiPosition">UI坐标</param>
+        /// <returns>图像坐标，如果无效则返回null</returns>
+        private (double X, double Y)? ConvertUIToImageCoordinates(Avalonia.Point uiPosition)
+        {
+            try
+            {
+                // 获取当前帧信息
+                WriteableBitmap? currentFrame = null;
+                lock (_frameLock)
+                {
+                    currentFrame = _currentFrame;
+                }
+
+                if (currentFrame == null) return null;
+
+                // 获取图像控件的实际显示尺寸
+                var imageActualWidth = CameraImage.Bounds.Width;
+                var imageActualHeight = CameraImage.Bounds.Height;
+
+                if (imageActualWidth <= 0 || imageActualHeight <= 0) return null;
+
+                // 计算缩放比例（保持宽高比）
+                var frameWidth = currentFrame.PixelSize.Width;
+                var frameHeight = currentFrame.PixelSize.Height;
+                var scaleX = imageActualWidth / frameWidth;
+                var scaleY = imageActualHeight / frameHeight;
+                var scale = Math.Min(scaleX, scaleY);
+
+                // 计算实际显示的图像尺寸
+                var displayWidth = frameWidth * scale;
+                var displayHeight = frameHeight * scale;
+
+                // 计算居中偏移量
+                var offsetX = (imageActualWidth - displayWidth) / 2;
+                var offsetY = (imageActualHeight - displayHeight) / 2;
+
+                // 检查点击是否在图像显示区域内
+                if (uiPosition.X < offsetX || uiPosition.X > offsetX + displayWidth ||
+                    uiPosition.Y < offsetY || uiPosition.Y > offsetY + displayHeight)
+                {
+                    return null;
+                }
+
+                // 转换为图像坐标
+                var imageX = (uiPosition.X - offsetX) / scale;
+                var imageY = (uiPosition.Y - offsetY) / scale;
+
+                // 确保坐标在图像范围内
+                imageX = Math.Max(SelectionSize / 2, Math.Min(frameWidth - SelectionSize / 2, imageX));
+                imageY = Math.Max(SelectionSize / 2, Math.Min(frameHeight - SelectionSize / 2, imageY));
+
+                return (imageX, imageY);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 更新检测框中心位置
+        /// </summary>
+        /// <param name="newCenter">新的中心位置（图像坐标）</param>
+        private void UpdateSelectionCenter((double X, double Y) newCenter)
+        {
+            _selectionCenter = newCenter;
+
+            // 立即更新UI显示
+            Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                // 强制更新覆盖层
+                WriteableBitmap? currentFrame = null;
+                lock (_frameLock)
+                {
+                    currentFrame = _currentFrame;
+                }
+
+                if (currentFrame != null)
+                {
+                    UpdateOverlay(currentFrame.PixelSize.Width, currentFrame.PixelSize.Height);
+
+                    // 立即提取新位置的RGB值
+                    var rgb = ExtractRgbFromBitmap(currentFrame, (int)_selectionCenter.X, (int)_selectionCenter.Y, SelectionSize);
+                    var grayscale = (byte)(0.299 * rgb.R + 0.587 * rgb.G + 0.114 * rgb.B);
+
+                    // 更新显示
+                    RgbText.Text = $"RGB: {rgb.R}, {rgb.G}, {rgb.B}";
+                    GrayscaleText.Text = $"Gray: {grayscale}";
+
+                    // 发送串口数据
+                    Task.Run(() => _serialManager?.SendColorDataAsync(rgb.R, rgb.G, rgb.B, grayscale));
+                }
+            });
+        }
+
+        /// <summary>
+        /// 键盘按键事件处理
+        /// </summary>
+        /// <param name="sender">事件发送者</param>
+        /// <param name="e">事件参数</param>
+        private void OnKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
+        {
+            try
+            {
+                switch (e.Key)
+                {
+                    case Avalonia.Input.Key.Space:
+                    case Avalonia.Input.Key.C:
+                        // 空格键或C键：重置检测框到中心
+                        ResetSelectionToCenter();
+                        e.Handled = true;
+                        break;
+
+                    case Avalonia.Input.Key.Up:
+                        // 上箭头：向上移动检测框
+                        MoveSelection(0, -10);
+                        e.Handled = true;
+                        break;
+
+                    case Avalonia.Input.Key.Down:
+                        // 下箭头：向下移动检测框
+                        MoveSelection(0, 10);
+                        e.Handled = true;
+                        break;
+
+                    case Avalonia.Input.Key.Left:
+                        // 左箭头：向左移动检测框
+                        MoveSelection(-10, 0);
+                        e.Handled = true;
+                        break;
+
+                    case Avalonia.Input.Key.Right:
+                        // 右箭头：向右移动检测框
+                        MoveSelection(10, 0);
+                        e.Handled = true;
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"KeyDown error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 重置检测框到图像中心
+        /// </summary>
+        private void ResetSelectionToCenter()
+        {
+            WriteableBitmap? currentFrame = null;
+            lock (_frameLock)
+            {
+                currentFrame = _currentFrame;
+            }
+
+            if (currentFrame != null)
+            {
+                var centerX = currentFrame.PixelSize.Width / 2.0;
+                var centerY = currentFrame.PixelSize.Height / 2.0;
+                UpdateSelectionCenter((centerX, centerY));
+            }
+        }
+
+        /// <summary>
+        /// 相对移动检测框位置
+        /// </summary>
+        /// <param name="deltaX">X方向移动距离</param>
+        /// <param name="deltaY">Y方向移动距离</param>
+        private void MoveSelection(double deltaX, double deltaY)
+        {
+            WriteableBitmap? currentFrame = null;
+            lock (_frameLock)
+            {
+                currentFrame = _currentFrame;
+            }
+
+            if (currentFrame != null)
+            {
+                var newX = _selectionCenter.X + deltaX;
+                var newY = _selectionCenter.Y + deltaY;
+
+                // 边界检查
+                newX = Math.Max(SelectionSize / 2, Math.Min(currentFrame.PixelSize.Width - SelectionSize / 2, newX));
+                newY = Math.Max(SelectionSize / 2, Math.Min(currentFrame.PixelSize.Height - SelectionSize / 2, newY));
+
+                UpdateSelectionCenter((newX, newY));
+            }
+        }
+
+        #endregion
+
         #region 摄像头初始化和控制
 
         /// <summary>
@@ -266,6 +607,12 @@ namespace CameraColorPicker
                 // 启动帧捕获循环
                 _cancellationTokenSource = new CancellationTokenSource();
                 _ = Task.Run(() => CaptureLoop(_cancellationTokenSource.Token));
+
+                // 设置默认检测框位置为图像中心（640x480）
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    _selectionCenter = (320, 240);
+                });
             }
             catch (Exception ex)
             {
@@ -366,10 +713,8 @@ namespace CameraColorPicker
                     // 更新覆盖层位置（矩形框和指示线）
                     UpdateOverlay(frameCopy.PixelSize.Width, frameCopy.PixelSize.Height);
 
-                    // 提取中心区域的RGB值并显示
-                    var centerX = frameCopy.PixelSize.Width / 2;
-                    var centerY = frameCopy.PixelSize.Height / 2;
-                    var rgb = ExtractRgbFromBitmap(frameCopy, centerX, centerY, 100);
+                    // 提取检测框区域的RGB值并显示
+                    var rgb = ExtractRgbFromBitmap(frameCopy, (int)_selectionCenter.X, (int)_selectionCenter.Y, SelectionSize);
 
                     // 计算灰度值 (使用标准的灰度转换公式)
                     var grayscale = (byte)(0.299 * rgb.R + 0.587 * rgb.G + 0.114 * rgb.B);
@@ -487,27 +832,135 @@ namespace CameraColorPicker
             Canvas.SetLeft(OverlayCanvas, offsetX);
             Canvas.SetTop(OverlayCanvas, offsetY);
 
-            // 在画面中心放置检测矩形框
-            var rectSize = 100;
-            var rectX = (displayWidth - rectSize) / 2;
-            var rectY = (displayHeight - rectSize) / 2;
+            // 根据当前检测框位置放置矩形框
+            var rectSize = SelectionSize;
+            var rectX = (_selectionCenter.X * scale) - (rectSize / 2);
+            var rectY = (_selectionCenter.Y * scale) - (rectSize / 2);
+
+            // 确保矩形框在显示区域内
+            rectX = Math.Max(0, Math.Min(displayWidth - rectSize, rectX));
+            rectY = Math.Max(0, Math.Min(displayHeight - rectSize, rectY));
 
             Canvas.SetLeft(SelectionRect, rectX);
             Canvas.SetTop(SelectionRect, rectY);
 
-            // 设置指示线和RGB显示框位置
-            var lineStartX = rectX + rectSize;          // 线条起点：矩形右边
-            var lineStartY = rectY + rectSize / 2;      // 线条起点：矩形中间高度
-            var lineEndX = lineStartX + 100;            // 线条终点：向右延伸100像素
-            var lineEndY = lineStartY - 50;             // 线条终点：向上偏移50像素
+            // 智能计算RGB显示框的位置
+            var rgbDisplayWidth = 120;  // RGB显示框的大概宽度
+            var rgbDisplayHeight = 80;  // RGB显示框的大概高度
+            var lineLength = 100;       // 指示线长度
+            var lineOffset = 50;        // 指示线垂直偏移量
+
+            // 计算矩形框的中心点
+            var rectCenterX = rectX + rectSize / 2;
+            var rectCenterY = rectY + rectSize / 2;
+
+            // 默认位置：右上方
+            var lineStartX = rectX + rectSize;
+            var lineStartY = rectCenterY;
+            var lineEndX = lineStartX + lineLength;
+            var lineEndY = lineStartY - lineOffset;
+            var rgbDisplayX = lineEndX;
+            var rgbDisplayY = lineEndY - rgbDisplayHeight / 2;
+
+            // 检查右上方是否有足够空间
+            if (lineEndX + rgbDisplayWidth > displayWidth || lineEndY - rgbDisplayHeight / 2 < 0)
+            {
+                // 尝试左上方
+                lineStartX = rectX;
+                lineStartY = rectCenterY;
+                lineEndX = lineStartX - lineLength;
+                lineEndY = lineStartY - lineOffset;
+                rgbDisplayX = lineEndX - rgbDisplayWidth;
+                rgbDisplayY = lineEndY - rgbDisplayHeight / 2;
+
+                // 检查左上方是否有足够空间
+                if (lineEndX - rgbDisplayWidth < 0 || lineEndY - rgbDisplayHeight / 2 < 0)
+                {
+                    // 尝试右下方
+                    lineStartX = rectX + rectSize;
+                    lineStartY = rectCenterY;
+                    lineEndX = lineStartX + lineLength;
+                    lineEndY = lineStartY + lineOffset;
+                    rgbDisplayX = lineEndX;
+                    rgbDisplayY = lineEndY - rgbDisplayHeight / 2;
+
+                    // 检查右下方是否有足够空间
+                    if (lineEndX + rgbDisplayWidth > displayWidth || lineEndY + rgbDisplayHeight / 2 > displayHeight)
+                    {
+                        // 尝试左下方
+                        lineStartX = rectX;
+                        lineStartY = rectCenterY;
+                        lineEndX = lineStartX - lineLength;
+                        lineEndY = lineStartY + lineOffset;
+                        rgbDisplayX = lineEndX - rgbDisplayWidth;
+                        rgbDisplayY = lineEndY - rgbDisplayHeight / 2;
+
+                        // 检查左下方是否有足够空间
+                        if (lineEndX - rgbDisplayWidth < 0 || lineEndY + rgbDisplayHeight / 2 > displayHeight)
+                        {
+                            // 如果四个角都不合适，则使用最接近的可用位置
+                            // 优先选择水平方向有空间的位置
+                            if (rectCenterX < displayWidth / 2)
+                            {
+                                // 检测框在左半部分，显示框放在右侧
+                                lineStartX = rectX + rectSize;
+                                lineStartY = rectCenterY;
+                                lineEndX = Math.Min(lineStartX + lineLength, displayWidth - rgbDisplayWidth - 10);
+                                lineEndY = rectCenterY;
+                                rgbDisplayX = lineEndX;
+                                rgbDisplayY = Math.Max(10, Math.Min(displayHeight - rgbDisplayHeight - 10, rectCenterY - rgbDisplayHeight / 2));
+                            }
+                            else
+                            {
+                                // 检测框在右半部分，显示框放在左侧
+                                lineStartX = rectX;
+                                lineStartY = rectCenterY;
+                                lineEndX = Math.Max(lineStartX - lineLength, rgbDisplayWidth + 10);
+                                lineEndY = rectCenterY;
+                                rgbDisplayX = lineEndX - rgbDisplayWidth;
+                                rgbDisplayY = Math.Max(10, Math.Min(displayHeight - rgbDisplayHeight - 10, rectCenterY - rgbDisplayHeight / 2));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 最终边界检查，确保RGB显示框完全在可视区域内
+            rgbDisplayX = Math.Max(0, Math.Min(displayWidth - rgbDisplayWidth, rgbDisplayX));
+            rgbDisplayY = Math.Max(0, Math.Min(displayHeight - rgbDisplayHeight, rgbDisplayY));
+
+            // 根据最终的RGB显示框位置调整指示线终点
+            var finalRgbCenterX = rgbDisplayX + rgbDisplayWidth / 2;
+            var finalRgbCenterY = rgbDisplayY + rgbDisplayHeight / 2;
+
+            // 计算从矩形框中心到RGB显示框中心的指示线
+            var deltaX = finalRgbCenterX - rectCenterX;
+            var deltaY = finalRgbCenterY - rectCenterY;
+            var distance = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+
+            if (distance > 0)
+            {
+                // 标准化方向向量
+                var dirX = deltaX / distance;
+                var dirY = deltaY / distance;
+
+                // 指示线起点：矩形框边缘
+                lineStartX = rectCenterX + dirX * (rectSize / 2);
+                lineStartY = rectCenterY + dirY * (rectSize / 2);
+
+                // 指示线终点：RGB显示框边缘
+                var rgbEdgeDistance = Math.Min(rgbDisplayWidth, rgbDisplayHeight) / 2;
+                lineEndX = finalRgbCenterX - dirX * rgbEdgeDistance;
+                lineEndY = finalRgbCenterY - dirY * rgbEdgeDistance;
+            }
 
             // 设置指示线的起点和终点
             IndicatorLine.StartPoint = new Avalonia.Point(lineStartX, lineStartY);
             IndicatorLine.EndPoint = new Avalonia.Point(lineEndX, lineEndY);
 
-            // 将RGB显示框放置在指示线终点附近
-            Canvas.SetLeft(RgbDisplay, lineEndX);
-            Canvas.SetTop(RgbDisplay, lineEndY - 40);
+            // 将RGB显示框放置在计算出的最佳位置
+            Canvas.SetLeft(RgbDisplay, rgbDisplayX);
+            Canvas.SetTop(RgbDisplay, rgbDisplayY);
         }
 
         /// <summary>
