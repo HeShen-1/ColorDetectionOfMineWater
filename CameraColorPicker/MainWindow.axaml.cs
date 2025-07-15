@@ -26,6 +26,11 @@ namespace CameraColorPicker
         private V4L2CameraSafe? _camera;
 
         /// <summary>
+        /// 串口通信管理器
+        /// </summary>
+        private SerialPortManager? _serialManager;
+
+        /// <summary>
         /// 取消令牌源，用于控制异步任务的取消
         /// </summary>
         private CancellationTokenSource? _cancellationTokenSource;
@@ -55,11 +60,21 @@ namespace CameraColorPicker
         /// </summary>
         private readonly object _frameLock = new object();
 
+        /// <summary>
+        /// 当前检测到的RGB值
+        /// </summary>
+        private (byte R, byte G, byte B) _currentRgb = (0, 0, 0);
+
+        /// <summary>
+        /// 当前检测到的灰度值
+        /// </summary>
+        private byte _currentGrayscale = 0;
+
         #endregion
 
         /// <summary>
         /// 主窗口构造函数
-        /// 初始化UI组件和定时器
+        /// 初始化UI组件、定时器和串口管理器
         /// </summary>
         public MainWindow()
         {
@@ -73,6 +88,11 @@ namespace CameraColorPicker
             _fpsTimer.Tick += UpdateFps;
             _lastFpsUpdate = DateTime.Now;
 
+            // 初始化串口管理器
+            _serialManager = new SerialPortManager();
+            _serialManager.ConnectionStatusChanged += OnSerialConnectionChanged;
+            _serialManager.DataSent += OnSerialDataSent;
+
             // 绑定窗口事件
             Opened += OnWindowOpened;
             Closing += OnWindowClosing;
@@ -82,24 +102,114 @@ namespace CameraColorPicker
 
         /// <summary>
         /// 窗口打开事件处理程序
-        /// 在窗口打开后异步初始化摄像头
+        /// 在窗口打开后异步初始化摄像头和串口
         /// </summary>
         /// <param name="sender">事件发送者</param>
         /// <param name="e">事件参数</param>
         private void OnWindowOpened(object? sender, EventArgs e)
         {
             Task.Run(() => InitializeCamera());
+            Task.Run(() => InitializeSerial());
         }
 
         /// <summary>
         /// 窗口关闭事件处理程序
-        /// 在窗口关闭时停止摄像头
+        /// 在窗口关闭时停止摄像头和串口通信
         /// </summary>
         /// <param name="sender">事件发送者</param>
         /// <param name="e">事件参数</param>
         private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
             StopCamera();
+            _serialManager?.Dispose();
+        }
+
+        #endregion
+
+        #region 串口通信相关方法
+
+        /// <summary>
+        /// 初始化串口通信
+        /// 尝试连接常见的串口设备
+        /// </summary>
+        private async Task InitializeSerial()
+        {
+            try
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    StatusText.Text = "Status: Initializing serial port...";
+                });
+
+                // 常见的树莓派串口设备路径
+                string[] commonPorts = {
+                    "/dev/ttyUSB0",     // USB转串口设备
+                    "/dev/ttyACM0",     // USB CDC设备
+                    "/dev/ttyAMA0",     // 树莓派硬件串口
+                    "/dev/serial0",     // 树莓派主串口别名
+                    "/dev/ttyS0"        // 标准串口
+                };
+
+                bool connected = false;
+                foreach (var port in commonPorts)
+                {
+                    if (_serialManager?.OpenPort(port, 9600) == true)
+                    {
+                        connected = true;
+                        await Dispatcher.UIThread.InvokeAsync(() =>
+                        {
+                            SerialStatusText.Text = $"Serial: Connected ({port})";
+                        });
+                        break;
+                    }
+                }
+
+                if (!connected)
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        SerialStatusText.Text = "Serial: No device found";
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    SerialStatusText.Text = $"Serial: Error - {ex.Message}";
+                });
+            }
+        }
+
+        /// <summary>
+        /// 串口连接状态变化事件处理
+        /// </summary>
+        /// <param name="sender">事件发送者</param>
+        /// <param name="isConnected">是否已连接</param>
+        private void OnSerialConnectionChanged(object? sender, bool isConnected)
+        {
+            Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (isConnected)
+                {
+                    SerialStatusText.Text = "Serial: Connected";
+                }
+                else
+                {
+                    SerialStatusText.Text = "Serial: Disconnected";
+                }
+            });
+        }
+
+        /// <summary>
+        /// 串口数据发送事件处理
+        /// </summary>
+        /// <param name="sender">事件发送者</param>
+        /// <param name="data">发送的数据</param>
+        private void OnSerialDataSent(object? sender, string data)
+        {
+            // 可以在这里记录发送的数据或显示在UI上
+            Debug.WriteLine($"串口数据已发送: {data}");
         }
 
         #endregion
@@ -234,7 +344,7 @@ namespace CameraColorPicker
 
         /// <summary>
         /// 更新用户界面
-        /// 显示最新的摄像头帧并提取RGB颜色值
+        /// 显示最新的摄像头帧并提取RGB颜色值，同时发送串口数据
         /// </summary>
         private void UpdateUI()
         {
@@ -260,7 +370,20 @@ namespace CameraColorPicker
                     var centerX = frameCopy.PixelSize.Width / 2;
                     var centerY = frameCopy.PixelSize.Height / 2;
                     var rgb = ExtractRgbFromBitmap(frameCopy, centerX, centerY, 100);
+
+                    // 计算灰度值 (使用标准的灰度转换公式)
+                    var grayscale = (byte)(0.299 * rgb.R + 0.587 * rgb.G + 0.114 * rgb.B);
+
+                    // 更新当前RGB和灰度值
+                    _currentRgb = rgb;
+                    _currentGrayscale = grayscale;
+
+                    // 更新UI显示
                     RgbText.Text = $"RGB: {rgb.R}, {rgb.G}, {rgb.B}";
+                    GrayscaleText.Text = $"Gray: {grayscale}";
+
+                    // 发送串口数据
+                    Task.Run(() => _serialManager?.SendColorDataAsync(rgb.R, rgb.G, rgb.B, grayscale));
                 }
             }
             catch (Exception ex)
@@ -384,7 +507,7 @@ namespace CameraColorPicker
 
             // 将RGB显示框放置在指示线终点附近
             Canvas.SetLeft(RgbDisplay, lineEndX);
-            Canvas.SetTop(RgbDisplay, lineEndY - 20);
+            Canvas.SetTop(RgbDisplay, lineEndY - 40);
         }
 
         /// <summary>

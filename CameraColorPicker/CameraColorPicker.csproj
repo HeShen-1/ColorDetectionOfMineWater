@@ -40,6 +40,8 @@
     <PackageReference Include="SkiaSharp" Version="2.88.7" />
     <!-- SkiaSharp Linux本机资源 -->
     <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.7" />
+    <!-- 串口通信库 -->
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
   </ItemGroup>
 
 </Project> 

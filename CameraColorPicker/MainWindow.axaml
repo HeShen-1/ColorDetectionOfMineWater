@@ -8,7 +8,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
         x:Class="CameraColorPicker.MainWindow"
-        Title="Camera Color Picker"
+        Title="Camera Color Picker with Serial Communication"
         WindowStartupLocation="CenterScreen"
         Width="800" Height="600">
     
@@ -50,22 +50,30 @@
                           Stroke="Yellow"
                           StrokeThickness="2"/>
                     
-                    <!-- RGB数值显示框 - 半透明黑色背景 -->
+                    <!-- RGB和灰度值显示框 - 半透明黑色背景 -->
                     <Border Name="RgbDisplay"
                             Background="#AA000000"
                             CornerRadius="5"
                             Padding="10">
-                        <!-- RGB数值文本 - 白色粗体字 -->
-                        <TextBlock Name="RgbText"
-                                 Foreground="White"
-                                 FontSize="14"
-                                 FontWeight="Bold"/>
+                        <StackPanel>
+                            <!-- RGB数值文本 - 白色粗体字 -->
+                            <TextBlock Name="RgbText"
+                                     Foreground="White"
+                                     FontSize="14"
+                                     FontWeight="Bold"/>
+                            <!-- 灰度值文本 - 白色粗体字 -->
+                            <TextBlock Name="GrayscaleText"
+                                     Foreground="White"
+                                     FontSize="14"
+                                     FontWeight="Bold"
+                                     Margin="0,5,0,0"/>
+                        </StackPanel>
                     </Border>
                 </Canvas>
             </Grid>
         </Border>
         
-        <!-- 状态栏 - 显示连接状态和FPS -->
+        <!-- 状态栏 - 显示连接状态、串口状态和FPS -->
         <Border Grid.Row="1" 
                 Background="#F0F0F0"
                 Padding="10,5">
@@ -73,20 +81,30 @@
                 <Grid.ColumnDefinitions>
                     <!-- 第一列：状态文本（自动宽度） -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 第二列：空白填充（占用剩余空间） -->
+                    <!-- 第二列：串口状态（自动宽度） -->
+                    <ColumnDefinition Width="Auto"/>
+                    <!-- 第三列：空白填充（占用剩余空间） -->
                     <ColumnDefinition Width="*"/>
-                    <!-- 第三列：FPS显示（自动宽度） -->
+                    <!-- 第四列：FPS显示（自动宽度） -->
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 
-                <!-- 状态文本显示 -->
+                <!-- 摄像头状态文本显示 -->
                 <TextBlock Grid.Column="0" 
                          Name="StatusText"
                          VerticalAlignment="Center"
-                         Text="Status: Initializing..."/>
+                         Text="Status: Initializing..."
+                         Margin="0,0,20,0"/>
+                
+                <!-- 串口状态文本显示 -->
+                <TextBlock Grid.Column="1"
+                         Name="SerialStatusText"
+                         VerticalAlignment="Center"
+                         Text="Serial: Disconnected"
+                         Margin="0,0,20,0"/>
                 
                 <!-- FPS显示文本 -->
-                <TextBlock Grid.Column="2"
+                <TextBlock Grid.Column="3"
                          Name="FpsText"
                          VerticalAlignment="Center"
                          Text="FPS: 0"/>
